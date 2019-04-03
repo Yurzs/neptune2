@@ -1,0 +1,35 @@
+version: '3'
+
+services:
+  db:
+    image: postgres:latest
+    restart: always
+    environment:
+      POSTGRES_DB: neptune_web
+      POSTGRES_USER: neptune_web_user
+      POSTGRES_PASSWORD: my_super_secret_password_please_change_me
+    expose:
+      - "5432"
+    volumes:
+      - database_strg:/var/lib/postgresql/data
+  dns:
+    restart: always
+    build: .
+    command: python server.py -u
+    ports:
+      - "0.0.0.0:53:53/udp"
+    depends_on:
+      - db
+    links:
+      - db:postgres
+    environment:
+      RESOLVER: 0
+      DB_NAME: neptune_web
+      DB_USER: neptune_web_user
+      DB_PASS: my_super_secret_password_please_change_me
+      DB_SERVICE: postgres
+      DB_PORT: 5432
+
+volumes:
+  database_strg: {}
+

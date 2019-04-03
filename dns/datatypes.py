@@ -53,6 +53,9 @@ def decode_url(raw_bin_data: bitstring.BitArray, domain_links: dict, bytes_count
 
 
 class int1(int):
+    """
+    Subclass of int with binary length of 1 bit
+    """
     @property
     def binary(self):
         return str(bin(self)[2:]).zfill(1)
@@ -66,6 +69,9 @@ class int1(int):
 
 
 class int2(int):
+    """
+    Subclass of int with binary length of 2 bits
+    """
     @property
     def binary(self):
         return str(bin(self)[2:]).zfill(2)
@@ -76,7 +82,9 @@ class int2(int):
 
 
 class int3(int):
-
+    """
+    Subclass of int with binary length of 3 bits
+    """
     @property
     def binary(self):
         return str(bin(self)[2:]).zfill(3)
@@ -89,6 +97,9 @@ class int3(int):
     #     return cls.from_bytes(byte_data[:3], byteorder='big'), byte_data[3:], byte_counter + 3, domain_links
 
 class int4(int):
+    """
+    Subclass of int with binary length of 4 bits
+    """
     @property
     def binary(self):
         return str(bin(self)[2:]).zfill(4)
@@ -102,6 +113,9 @@ class int4(int):
 
 
 class int8(int):
+    """
+    Subclass of int with binary length of 8 bits
+    """
     @property
     def binary(self):
         return str(bin(self)[2:]).zfill(8)
@@ -114,6 +128,9 @@ class int8(int):
     #     return str(bin(self)[2:]).zfill(8)
 
 class int14(int):
+    """
+    Subclass of int with binary length of 14 bits
+    """
     @property
     def binary(self):
         return str(bin(self)[2:]).zfill(14)
@@ -126,6 +143,9 @@ class int14(int):
     #     return str(bin(self)[2:]).zfill(14)
 
 class int16(int):
+    """
+    Subclass of int with binary length of 16 bits
+    """
     @property
     def binary(self):
         return str(bin(self)[2:]).zfill(16)
@@ -139,7 +159,9 @@ class int16(int):
 
 
 class int32(int):
-
+    """
+    Subclass of int with binary length of 32 bits
+    """
 
     @property
     def binary(self) -> str:
@@ -153,6 +175,9 @@ class int32(int):
     #     return cls.from_bytes(byte_data[:32], byteorder='big'), byte_data[32:], byte_counter + 32, domain_links
 
 class int128(int):
+    """
+    Subclass of int with binary length of 128 bit
+    """
     @property
     def binary(self) -> str:
         return str(bin(self)[2:]).zfill(128)
@@ -166,6 +191,9 @@ class int128(int):
 
 
 class local_str_without_prefix(str):
+    """
+    ASCII string without leading length prefix
+    """
     @property
     def binary(self):
         return ''.join([str(bin(ord(char))[2:]).zfill(8) for char in self])
@@ -180,6 +208,9 @@ class local_str_without_prefix(str):
 
 
 class local_str(str):
+    """
+    ASCII string WITH leading length prefix
+    """
     # def __init__(self):
     #     if isinstance(self, bitstring.BitArray):
     #         result = self[self[0:8]]
@@ -202,6 +233,9 @@ class local_str(str):
 
 
 class IpAddress(str):
+    """
+    ASCII string of IPv4 address without separation
+    """
     @property
     def binary(self):
         return ''.join([str(bin(int(item))[2:]).zfill(8) for item in self.split('.')])
@@ -214,6 +248,9 @@ class IpAddress(str):
 
 
 class Ip6Address(str):
+    """
+    ASCII string of IPv6 address without separation
+    """
     @property
     def binary(self):
         result = ''
@@ -236,11 +273,9 @@ class Ip6Address(str):
 
 
 class UrlAddress(str):
-    # def __init__(self, string):
-    #     url = urlparse(url=string)
-    #     print (url.path)
-    #     if url.path:
-    #         super().__init__(string)
+    """
+    ASCII string representing domain name split by length octets
+    """
 
     @property
     def binary(self):
@@ -256,6 +291,12 @@ class UrlAddress(str):
         return binary_string
 
     def binary_with_pos(self, urls_dict, octet_counter):
+        """
+
+        :param urls_dict:
+        :param octet_counter:
+        :return:
+        """
         binary_string = ''
         parts = self.split('.')
         prev = ''
@@ -302,40 +343,40 @@ class UrlAddress(str):
         return cls(url), raw_bin_data, byte_counter, domain_links
 
 
-class bytestring(str):
-
-    @property
-    def binary(self):
-        import bitstring
-        return bitstring.BitArray(bytes=self).bin
-
-
-class DomainName:
-    length_octet = ''
-    label = ''
-
-    @classmethod
-    def decode(self, byte_data, domain_links, byte_counter):
-        pass
-
-
-class PublicKey:
-    def __init__(self, value):
-        self.value = value
-
-    def __str__(self):
-        return self.value
-
-    @classmethod
-    def decode(self, byte_data, domain_links, byte_counter):
-        pass
-
-
-class DnsKeyFlags:
-    def __init__(self, *args, **kwargs):
-        self.key_id = kwargs.get('key_id')
-        self.sep = kwargs.get('sep')
-
-    @classmethod
-    def decode(cls, key_id, sep):
-        return cls(key_id=key_id, sep=sep)
+# class bytestring(str):
+#
+#     @property
+#     def binary(self):
+#         import bitstring
+#         return bitstring.BitArray(bytes=self).bin
+#
+#
+# class DomainName:
+#     length_octet = ''
+#     label = ''
+#
+#     @classmethod
+#     def decode(self, byte_data, domain_links, byte_counter):
+#         pass
+#
+#
+# class PublicKey:
+#     def __init__(self, value):
+#         self.value = value
+#
+#     def __str__(self):
+#         return self.value
+#
+#     @classmethod
+#     def decode(self, byte_data, domain_links, byte_counter):
+#         pass
+#
+#
+# class DnsKeyFlags:
+#     def __init__(self, *args, **kwargs):
+#         self.key_id = kwargs.get('key_id')
+#         self.sep = kwargs.get('sep')
+#
+#     @classmethod
+#     def decode(cls, key_id, sep):
+#         return cls(key_id=key_id, sep=sep)
