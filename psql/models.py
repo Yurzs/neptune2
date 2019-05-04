@@ -15,6 +15,131 @@ loop = config.loop
 redisconnection = config.redisconnection
 
 
+class Domain(db.Model):
+    __tablename__ = 'database_domain'
+    __table_args__ = (
+        UniqueConstraint('parent_id', 'label'),
+    )
+    id = db.Column(db.Integer(), primary_key=True, server_default=text("nextval('database_domain_id_seq'::regclass)"))
+    is_zone = db.Column(db.Boolean(), nullable=False)
+    label = db.Column(db.String(32), nullable=False)
+    parent_id = db.Column(db.ForeignKey('database_domain.id', deferrable=True, initially='DEFERRED'), index=True)
+    primary_nameserver_id = db.Column(db.ForeignKey('database_ns.id', deferrable=True, initially='DEFERRED'),
+                                      index=True)
+    responsible_user_email = db.Column(db.String(254), nullable=False)
+    responsible_user_id = db.Column(db.Integer(), nullable=False)
+
+    async def async_get_parent(self, redis: 'RedisPickle' = None):
+        if redis:
+            result = redis.get(f'domain_id={self.parent_id}')
+            if result:
+                await result.build()
+                return result
+        else:
+            result = await Domain.query.where(Domain.id == self.parent_id).gino.first()
+            if result:
+                await result.build()
+                return result
+        return result
+
+    async def async_get_child(self, label, redis: 'RedisPickle' = None):
+        if redis:
+            return redis.get(f'domain_id={self.id}&children')
+        return await Domain.query.where(and_(Domain.parent_id == self.id, Domain.label == label)).gino.first()
+
+    async def async_get_zone(self, redis: 'RedisPickle' = None):
+        if self.is_zone:
+            return self
+        if self.parent:
+            parent = self.parent
+            for n in range(len(self.full_name.split('.'))):
+                if parent.is_zone:
+                    return parent
+                else:
+                    await self.parent.build()
+                    try:
+                        parent = self.parent.parent
+                        await parent.build()
+                    except:
+                        return None
+        return None
+
+    async def async_get_primary_nameserver(self, redis: 'RedisPickle' = None):
+        if redis:
+            return redis.get(f'domain_id={self.id}&type=2&rr_id={self.primary_nameserver_id}')
+        return await Ns.query.where(Ns.id == self.primary_nameserver_id).gino.first()
+
+    async def async_get_full_parent_name(self):
+        if getattr(self, 'parent', None):
+            path = self.parent.label
+            if self.parent.parent_id:
+                item = await self.parent.async_get_parent()
+                path += f'.{item.label}'
+                while True:
+                    if item.parent_id:
+                        item = await item.async_get_parent()
+                        path += f'.{item.label}'
+                    else:
+                        break
+            return path
+        elif getattr(self, 'parent_id', None):
+            setattr(self, 'parent', await self.async_get_parent())
+            path = self.parent.label
+            if self.parent.parent_id:
+                item = await self.parent.async_get_parent()
+                path += f'.{item.label}'
+                while True:
+                    if item.parent_id:
+                        item = await item.async_get_parent()
+                        path += f'.{item.label}'
+                    else:
+                        break
+        else:
+            return ''
+
+    async def build(self, redis: 'RedisPickle' = None):
+        setattr(self, 'parent', await self.async_get_parent(redis=redis))
+        setattr(self, 'full_name', await self.async_get_full_name(redis=redis))
+        setattr(self, 'nsdname', await self.async_get_nsdname(redis=redis))
+        setattr(self, 'zone', await self.async_get_zone(redis=redis))
+        if self.zone:
+            setattr(self.zone, 'full_name', await self.zone.async_get_full_name())
+
+    async def async_get_nsdname(self, redis: 'RedisPickle' = None):
+        self.primary_nameserver = await self.async_get_primary_nameserver()
+
+    async def async_get_full_name(self, redis: 'RedisPickle' = None):
+        return str(self.label) + '.' + await self.async_get_full_parent_name() if self.parent else '.' + str(self.label)
+
+    @property
+    def rdata(self):
+        rdata = {
+            'mname': self.primary_nameserver.nsdname,
+            'rname': self.responsible_user_email.replace('@', '.'),
+            'serial': datetime.datetime.now().strftime('%Y%m%d%H'),
+            'refresh': 1200,
+            'retry': 120,
+            'expire': 1209600,
+            'minimum': 100
+        }
+        return rdata
+
+    @property
+    def dictionary(self):
+        from dns import datatypes
+        return {'name': datatypes.UrlAddress(self.full_name),
+                'atype': datatypes.int16(6),
+                'aclass': datatypes.int16(1),
+                'ttl': datatypes.int32((1 * 60 + 0) * 60 + 10),
+                'rdlength': datatypes.int16(99),
+                'rdata': self.rdata}
+
+    def __repr__(self):
+        if getattr(self, 'full_name', None):
+            return self.full_name
+        else:
+            return ''
+
 class A(db.Model):
     __tablename__ = 'database_a'
     __table_args__ = (
@@ -264,131 +389,6 @@ class Rrsig():
             }
         }
 
-
-class Domain(db.Model):
-    __tablename__ = 'database_domain'
-    __table_args__ = (
-        UniqueConstraint('parent_id', 'label'),
-    )
-    id = db.Column(db.Integer(), primary_key=True, server_default=text("nextval('database_domain_id_seq'::regclass)"))
-    is_zone = db.Column(db.Boolean(), nullable=False)
-    label = db.Column(db.String(32), nullable=False)
-    parent_id = db.Column(db.ForeignKey('database_domain.id', deferrable=True, initially='DEFERRED'), index=True)
-    primary_nameserver_id = db.Column(db.ForeignKey('database_ns.id', deferrable=True, initially='DEFERRED'),
-                                      index=True)
-    responsible_user_email = db.Column(db.String(254), nullable=False)
-    responsible_user_id = db.Column(db.Integer(), nullable=False)
-
-    async def async_get_parent(self, redis: 'RedisPickle' = None):
-        if redis:
-            result = redis.get(f'domain_id={self.parent_id}')
-            if result:
-                await result.build()
-                return result
-        else:
-            result = await Domain.query.where(Domain.id == self.parent_id).gino.first()
-            if result:
-                await result.build()
-                return result
-        return result
-
-    async def async_get_child(self, label, redis: 'RedisPickle' = None):
-        if redis:
-            return redis.get(f'domain_id={self.id}&children')
-        return await Domain.query.where(and_(Domain.parent_id == self.id, Domain.label == label)).gino.first()
-
-    async def async_get_zone(self, redis: 'RedisPickle' = None):
-        if self.is_zone:
-            return self
-        if self.parent:
-            parent = self.parent
-            for n in range(len(self.full_name.split('.'))):
-                if parent.is_zone:
-                    return parent
-                else:
-                    await self.parent.build()
-                    try:
-                        parent = self.parent.parent
-                        await parent.build()
-                    except:
-                        return None
-        return None
-
-    async def async_get_primary_nameserver(self, redis: 'RedisPickle' = None):
-        if redis:
-            return redis.get(f'domain_id={self.id}&type=2&rr_id={self.primary_nameserver_id}')
-        return await Ns.query.where(Ns.id == self.primary_nameserver_id).gino.first()
-
-    async def async_get_full_parent_name(self):
-        if getattr(self, 'parent', None):
-            path = self.parent.label
-            if self.parent.parent_id:
-                item = await self.parent.async_get_parent()
-                path += f'.{item.label}'
-                while True:
-                    if item.parent_id:
-                        item = await item.async_get_parent()
-                        path += f'.{item.label}'
-                    else:
-                        break
-            return path
-        elif getattr(self, 'parent_id', None):
-            setattr(self, 'parent', await self.async_get_parent())
-            path = self.parent.label
-            if self.parent.parent_id:
-                item = await self.parent.async_get_parent()
-                path += f'.{item.label}'
-                while True:
-                    if item.parent_id:
-                        item = await item.async_get_parent()
-                        path += f'.{item.label}'
-                    else:
-                        break
-        else:
-            return ''
-
-    async def build(self, redis: 'RedisPickle' = None):
-        setattr(self, 'parent', await self.async_get_parent(redis=redis))
-        setattr(self, 'full_name', await self.async_get_full_name(redis=redis))
-        setattr(self, 'nsdname', await self.async_get_nsdname(redis=redis))
-        setattr(self, 'zone', await self.async_get_zone(redis=redis))
-        if self.zone:
-            setattr(self.zone, 'full_name', await self.zone.async_get_full_name())
-
-    async def async_get_nsdname(self, redis: 'RedisPickle' = None):
-        self.primary_nameserver = await self.async_get_primary_nameserver()
-
-    async def async_get_full_name(self, redis: 'RedisPickle' = None):
-        return str(self.label) + '.' + await self.async_get_full_parent_name() if self.parent else '.' + str(self.label)
-
-    @property
-    def rdata(self):
-        rdata = {
-            'mname': self.primary_nameserver.nsdname,
-            'rname': self.responsible_user_email.replace('@', '.'),
-            'serial': datetime.datetime.now().strftime('%Y%m%d%H'),
-            'refresh': 1200,
-            'retry': 120,
-            'expire': 1209600,
-            'minimum': 100
-        }
-        return rdata
-
-    @property
-    def dictionary(self):
-        from dns import datatypes
-        return {'name': datatypes.UrlAddress(self.full_name),
-                'atype': datatypes.int16(6),
-                'aclass': datatypes.int16(1),
-                'ttl': datatypes.int32((1 * 60 + 0) * 60 + 10),
-                'rdlength': datatypes.int16(99),
-                'rdata': self.rdata}
-
-    def __repr__(self):
-        if getattr(self, 'full_name', None):
-            return self.full_name
-        else:
-            return ''
 
 
 class Soa():

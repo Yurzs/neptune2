@@ -4,6 +4,7 @@ from dns import datatypes
 import dns
 import bitstring
 
+
 class EDNS:
     def __init__(self, OPT=None):
         if OPT:
